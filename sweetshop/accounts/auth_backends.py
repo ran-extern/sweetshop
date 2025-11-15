@@ -6,12 +6,16 @@ class EmailBackend(ModelBackend):
     Custom authentication backend that allows users to log in using their email address.
     """
 
-    def authenticate(self, request, username=None, password=None, **kwargs):
+    def authenticate(self, request, email=None, password=None, **kwargs):
         User = get_user_model()
-        email=kwargs.get("email",username)
+        if email is None:
+            email = kwargs.get("username")
         if email is None or password is None:
             return None
-        user=User.objects.filter(email__iexact=email).first()
+        try:
+            user=User.objects.filter(email__iexact=email).first()
+        except User.DoesNotExist:
+            return None
         if user and user.check_password(password):
-            return user
+                return user
         return None

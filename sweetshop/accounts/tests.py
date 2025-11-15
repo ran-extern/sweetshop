@@ -19,6 +19,7 @@ class AuthAPITests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertIn("user", response.data)
+		self.assertEqual(response.data["user"]["email"], payload["email"])
 		self.assertEqual(response.data["user"]["username"], payload["username"])
 		self.assertIn("tokens", response.data)
 		self.assertIn("access", response.data["tokens"])
@@ -34,7 +35,7 @@ class AuthAPITests(APITestCase):
 		)
 
 		url = reverse("auth-login")
-		payload = {"username": "admin", "password": "strongpass123"}
+		payload = {"email": "admin@example.com", "password": "strongpass123"}
 
 		response = self.client.post(url, payload, format="json")
 
@@ -53,7 +54,7 @@ class AuthAPITests(APITestCase):
 		)
 
 		url = reverse("auth-login")
-		payload = {"username": admin_user.username, "password": "supersecret"}
+		payload = {"email": admin_user.email, "password": "supersecret"}
 
 		response = self.client.post(url, payload, format="json")
 

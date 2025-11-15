@@ -34,25 +34,22 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     """Authenticate a user via username/email plus password."""
 
-    username = serializers.CharField(required=False)
-    email = serializers.EmailField(required=False)
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate(self, attrs):
         request = self.context.get("request")
-        username = attrs.get("username")
         email = attrs.get("email")
         password = attrs.get("password")
 
-        if not username and not email:
-            raise serializers.ValidationError({"detail": _("Username or email is required.")})
+        if not email:
+            raise serializers.ValidationError({"detail": _("Email is required.")})
 
         if email:
             email = email.lower()
 
         user = authenticate(
             request=request,
-            username=username or email,
             password=password,
             email=email,
         )
