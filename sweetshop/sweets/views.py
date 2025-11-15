@@ -1,143 +1,128 @@
-"""APIView-based boilerplate for sweets, split between customer/admin use."""
+"""Unified DRF viewset exposing sweets CRUD, search, and inventory actions."""
 
-from rest_framework import permissions, status
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Q
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from .permissions import IsAdminUserRole
+
 from .models import Sweet
+from .permissions import IsAdminUserRole
 from .serializers import (
     SweetPurchaseSerializer,
     SweetRestockSerializer,
-    SweetDetailSerializer,
-    SweetCreateSerializer,
+    SweetSerializer,
+    SweetWriteSerializer,
 )
 
 
-class CustomerSweetListView(APIView):
-    """Expose read-only catalog data to authenticated customers."""
+class SweetViewSet(viewsets.ModelViewSet):
+    """Single entry point for sweets with role-aware branching."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    queryset = Sweet.objects.all().order_by("name")
 
-    def get(self, request):
-        """Return the sweets collection with optional filtering."""
-        queryset = Sweet.objects.all()
-        search = request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(name__icontains=search)
+    def get_serializer_class(self):
+        if self.action in {"create", "update", "partial_update"}:
+            return SweetWriteSerializer
+        if self.action == "purchase":
+            return SweetPurchaseSerializer
+        if self.action == "restock":
+            return SweetRestockSerializer
+        return SweetSerializer
+
+    def get_permissions(self):
+        admin_actions = {"create", "update", "partial_update", "destroy", "restock"}
+        permission_classes = [permissions.IsAuthenticated]
+        if self.action in admin_actions:
+            permission_classes.append(IsAdminUserRole)
+        return [permission() for permission in permission_classes]
+
+    def get_queryset(self):
+        queryset = Sweet.objects.all().order_by("name")
+        request = getattr(self, "request", None)
+        if request is None:
+            return queryset
+
         category = request.query_params.get("category")
+        search_term = request.query_params.get("search")
+
         if category:
-            queryset =queryset.filter(category__iexact=category)
-        serializer = SweetDetailSerializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            queryset = queryset.filter(category__iexact=category)
+        if search_term:
+            queryset = queryset.filter(
+                Q(name__icontains=search_term) | Q(description__icontains=search_term)
+            )
 
+        if not self._is_admin(request.user):
+            queryset = queryset.filter(quantity_in_stock__gt=0)
 
-class CustomerSweetDetailView(APIView):
-    """Expose an individual sweet to customers."""
+        return queryset
 
-    permission_classes = [permissions.IsAuthenticated]
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
-    def get(self, request, pk):
-        """Return a single sweet entry."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet =queryset.first()
-        serializer = SweetDetailSerializer(sweet)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-        
+    def _is_admin(self, user):
+        return bool(user and user.is_authenticated and user.is_admin())
 
+    @action(detail=False, methods=["get"], url_path="search")
+    def search(self, request):
+        """Search sweets by name, category, or price range."""
+        queryset = Sweet.objects.all().order_by("name")
+        queryset = queryset if self._is_admin(request.user) else queryset.filter(quantity_in_stock__gt=0)
 
-class CustomerPurchaseView(APIView):
-    """Allow customers to purchase a sweet and decrease inventory."""
+        name_query = request.query_params.get("name")
+        category = request.query_params.get("category")
+        min_price = request.query_params.get("min_price")
+        max_price = request.query_params.get("max_price")
 
-    permission_classes = [permissions.IsAuthenticated]
+        if name_query:
+            queryset = queryset.filter(
+                Q(name__icontains=name_query) | Q(description__icontains=name_query)
+            )
+        if category:
+            queryset = queryset.filter(category__iexact=category)
 
-    def post(self, request, pk):
-        """Process a purchase quantity for the specified sweet."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet =queryset.first()
-        serializer = SweetPurchaseSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        quantity = serializer.validated_data["quantity"]
-        if sweet.quantity_in_stock < quantity:
+        try:
+            if min_price:
+                queryset = queryset.filter(price__gte=Decimal(min_price))
+            if max_price:
+                queryset = queryset.filter(price__lte=Decimal(max_price))
+        except InvalidOperation:
             return Response(
-                {"detail": "Insufficient stock for the requested quantity."},
+                {"detail": "min_price and max_price must be valid numbers."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        sweet.purchase(quantity, user=request.user)
-        return Response(SweetDetailSerializer(sweet).data, status=status.HTTP_200_OK)
 
+        serializer = SweetSerializer(queryset, many=True)
+        return Response(serializer.data)
 
-class AdminSweetListCreateView(APIView):
-    """Admin-only listing and creation endpoint."""
-
-    permission_classes = [permissions.IsAuthenticated, IsAdminUserRole]
-    def get(self, request):
-        """Return the sweets collection for admin oversight."""
-        queryset = Sweet.objects.all()
-        serializer = SweetDetailSerializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def post(self, request):
-        """Create a new sweet record on behalf of an admin."""
-        serializer=SweetCreateSerializer(data=request.data, context={"request": request})
+    @action(detail=True, methods=["post"], url_path="purchase")
+    def purchase(self, request, pk=None):
+        """Allow authenticated customers to purchase sweets."""
+        serializer = SweetPurchaseSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        sweet = serializer.save()
-        return Response(SweetDetailSerializer(sweet).data, status=status.HTTP_201_CREATED)
+        sweet = Sweet.objects.get(pk=pk)
 
+        try:
+            sweet.purchase(quantity=serializer.validated_data["quantity"], user=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-class AdminSweetDetailView(APIView):
-    """Admin-only detail endpoint supporting updates/deletes."""
+        return Response(SweetSerializer(sweet).data, status=status.HTTP_200_OK)
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminUserRole]
-
-    def get(self, request, pk):
-        """Return a single sweet for admin management."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet = queryset.first()
-        serializer = SweetDetailSerializer(sweet)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def patch(self, request, pk):
-        """Partially update a sweet's attributes."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet = queryset.first()
-        serializer = SweetCreateSerializer(
-            sweet, data=request.data, partial=True, context={"request": request}
-        )
+    @action(detail=True, methods=["post"], url_path="restock")
+    def restock(self, request, pk=None):
+        """Admin-only restock endpoint."""
+        serializer = SweetRestockSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        updated_sweet = serializer.save()
-        return Response(SweetDetailSerializer(updated_sweet).data, status=status.HTTP_200_OK)
+        sweet = Sweet.objects.get(pk=pk)
 
-    def delete(self, request, pk):
-        """Remove a sweet from the catalog."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet = queryset.first()
-        sweet.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            sweet.restock(quantity=serializer.validated_data["quantity"], user=request.user)
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-
-class AdminRestockView(APIView):
-    """Admin-only endpoint to restock inventory for a sweet."""
-
-    permission_classes = [permissions.IsAuthenticated, IsAdminUserRole]
-
-    def post(self, request, pk):
-        """Increase inventory and log the restock event."""
-        queryset = Sweet.objects.filter(pk=pk)
-        if not queryset.exists():
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-        sweet =queryset.first()
-        serializer = SweetRestockSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        quantity = serializer.validated_data["quantity"]
-        sweet.restock(quantity, user=request.user)
-        return Response(SweetDetailSerializer(sweet).data, status=status.HTTP_200_OK)
+        return Response(SweetSerializer(sweet).data, status=status.HTTP_200_OK)
