@@ -15,6 +15,7 @@ class AuthAPITests(APITestCase):
 			"password": "sekretpass123",
 		}
 
+		# Happy-path registration should yield a persisted user plus JWT pair.
 		response = self.client.post(url, payload, format="json")
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -54,8 +55,10 @@ class AuthAPITests(APITestCase):
 		)
 
 		url = reverse("auth-login")
+		# Admins should receive their role in the payload so the UI can gate views.
 		payload = {"email": admin_user.email, "password": "supersecret"}
 
+		# Registration must echo the same email casing back to the caller.
 		response = self.client.post(url, payload, format="json")
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -78,7 +81,7 @@ class AuthAPITests(APITestCase):
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
 
-	def test_can_login_using_email_instead_of_username(self) -> None:
+	def test_can_login_and_check_role_for_customer(self) -> None:
 		user_model = get_user_model()
 		user_model.objects.create_user(
 			username="choco-chief",
@@ -87,6 +90,7 @@ class AuthAPITests(APITestCase):
 		)
 
 		url = reverse("auth-login")
+		# Email-only login route exercises the custom authentication backend.
 		payload = {"email": "choco@example.com", "password": "emailpass321"}
 
 		response = self.client.post(url, payload, format="json")
@@ -95,3 +99,4 @@ class AuthAPITests(APITestCase):
 		self.assertEqual(response.data["user"]["email"], "choco@example.com")
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
+		self.assertEqual(response.data["user"]["role"], "customer")

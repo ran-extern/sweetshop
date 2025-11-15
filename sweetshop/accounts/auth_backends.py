@@ -9,6 +9,8 @@ class EmailBackend(ModelBackend):
     def authenticate(self, request, email=None, password=None, **kwargs):
         User = get_user_model()
         if email is None:
+            # DRF serializers sometimes pass credentials via "username"
+            # so we gracefully fall back to that key for compatibility.
             email = kwargs.get("username")
         if email is None or password is None:
             return None

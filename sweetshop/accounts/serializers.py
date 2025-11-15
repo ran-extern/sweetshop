@@ -32,9 +32,9 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class LoginSerializer(serializers.Serializer):
-    """Authenticate a user via username/email plus password."""
+    """Authenticate a user via email plus password."""
 
-    email = serializers.EmailField(required=True)
+    email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate(self, attrs):
