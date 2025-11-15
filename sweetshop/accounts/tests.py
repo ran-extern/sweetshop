@@ -10,9 +10,9 @@ class AuthAPITests(APITestCase):
 	def test_can_register_user_and_receive_tokens(self) -> None:
 		url = reverse("auth-register")
 		payload = {
+			"username": "sweetlover",
 			"email": "sweetlover@example.com",
 			"password": "sekretpass123",
-			"role": "customer",
 		}
 
 		response = self.client.post(url, payload, format="json")

@@ -27,25 +27,38 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data["role"] = User.Role.CUSTOMER
+        validated_data["email"] = validated_data["email"].lower()
         return User.objects.create_user(**validated_data)
 
 
 class LoginSerializer(serializers.Serializer):
-    """Authenticate a user via username/password credentials."""
+    """Authenticate a user via username/email plus password."""
 
-    username = serializers.CharField()
+    username = serializers.CharField(required=False)
+    email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate(self, attrs):
         request = self.context.get("request")
+        username = attrs.get("username")
+        email = attrs.get("email")
+        password = attrs.get("password")
+
+        if not username and not email:
+            raise serializers.ValidationError({"detail": _("Username or email is required.")})
+
+        if email:
+            email = email.lower()
+
         user = authenticate(
             request=request,
-            username=attrs.get("username"),
-            password=attrs.get("password"),
+            username=username or email,
+            password=password,
+            email=email,
         )
+
         if not user:
-            raise serializers.ValidationError(
-                {"detail": _("Unable to log in with provided credentials.")}
-            )
+            raise serializers.ValidationError({"detail": _("Invalid credentials.")})
+
         attrs["user"] = user
         return attrs
