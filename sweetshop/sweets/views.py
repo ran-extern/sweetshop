@@ -23,6 +23,8 @@ class SweetViewSet(viewsets.ModelViewSet):
     queryset = Sweet.objects.all().order_by("name")
 
     def get_serializer_class(self):
+        # Mutating endpoints should use the write serializer, while
+        # inventory actions rely on their dedicated payload validators.
         if self.action in {"create", "update", "partial_update"}:
             return SweetWriteSerializer
         if self.action == "purchase":
@@ -32,6 +34,8 @@ class SweetViewSet(viewsets.ModelViewSet):
         return SweetSerializer
 
     def get_permissions(self):
+        # Customers may list/retrieve/purchase, but any admin-only
+        # management actions must include the custom role permission.
         admin_actions = {"create", "update", "partial_update", "destroy", "restock"}
         permission_classes = [permissions.IsAuthenticated]
         if self.action in admin_actions:
@@ -39,6 +43,8 @@ class SweetViewSet(viewsets.ModelViewSet):
         return [permission() for permission in permission_classes]
 
     def get_queryset(self):
+        # Apply filtering for query params and ensure customers only see
+        # sweets that are currently in stock.
         queryset = Sweet.objects.all().order_by("name")
         request = getattr(self, "request", None)
         if request is None:
@@ -60,9 +66,11 @@ class SweetViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        # Persist the user who created the product for auditing.
         serializer.save(created_by=self.request.user)
 
     def _is_admin(self, user):
+        """Small helper so multiple methods can reuse the role check."""
         return bool(user and user.is_authenticated and user.is_admin())
 
     @action(detail=False, methods=["get"], url_path="search")
@@ -89,6 +97,7 @@ class SweetViewSet(viewsets.ModelViewSet):
             if max_price:
                 queryset = queryset.filter(price__lte=Decimal(max_price))
         except InvalidOperation:
+            # Surface a helpful validation error instead of blowing up on bad decimals.
             return Response(
                 {"detail": "min_price and max_price must be valid numbers."},
                 status=status.HTTP_400_BAD_REQUEST,

@@ -24,6 +24,21 @@ class User(AbstractUser):
 		"""Convenience flag for permission checks."""
 		return self.role == self.Role.ADMIN or self.is_staff or self.is_superuser
 
+	@classmethod
+	def create_admin_user(cls, username: str, email: str, password: str, **extra_fields):
+		"""Factory helper to provision admin users with the correct flags."""
+		if not email:
+			raise ValueError("Email is required for admin accounts.")
+		extra_fields.setdefault("role", cls.Role.ADMIN)
+		extra_fields.setdefault("is_staff", True)
+		extra_fields.setdefault("is_superuser", True)
+		return cls.objects.create_user(
+			username=username,
+			email=email.lower(),
+			password=password,
+			**extra_fields,
+		)
+
 	def __str__(self) -> str:
 		"""Display the username and human-friendly role in admin lists."""
 		return f"{self.username} ({self.get_role_display()})"
