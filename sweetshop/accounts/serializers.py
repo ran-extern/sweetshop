@@ -19,6 +19,9 @@ class UserSerializer(serializers.ModelSerializer):
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Validates signup data (name + email) and hashes passwords when creating users."""
 
+    # Accept an optional `username` if a client wants to supply one, but
+    # don't require it — we auto-generate a safe username server-side.
+    username = serializers.CharField(write_only=True, required=False)
     name = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True, min_length=8)
 
