@@ -8,6 +8,8 @@ from django.utils.translation import gettext_lazy as _
 class User(AbstractUser):
 	"""Extend Django's base user to capture Sweet Shop-specific roles."""
 
+	name = models.CharField(max_length=255, blank=True)
+
 	class Role(models.TextChoices):
 		"""Enumerate the supported access levels within the platform."""
 		CUSTOMER = "customer", _("Customer")
@@ -25,13 +27,14 @@ class User(AbstractUser):
 		return self.role == self.Role.ADMIN or self.is_staff or self.is_superuser
 
 	@classmethod
-	def create_admin_user(cls, username: str, email: str, password: str, **extra_fields):
+	def create_admin_user(cls, username: str, email: str, password: str, *, name: str | None = None, **extra_fields):
 		"""Factory helper to provision admin users with the correct flags."""
 		if not email:
 			raise ValueError("Email is required for admin accounts.")
 		extra_fields.setdefault("role", cls.Role.ADMIN)
 		extra_fields.setdefault("is_staff", True)
 		extra_fields.setdefault("is_superuser", True)
+		extra_fields.setdefault("name", name or username)
 		return cls.objects.create_user(
 			username=username,
 			email=email.lower(),
@@ -41,4 +44,5 @@ class User(AbstractUser):
 
 	def __str__(self) -> str:
 		"""Display the username and human-friendly role in admin lists."""
-		return f"{self.username} ({self.get_role_display()})"
+		display = self.name or self.username
+		return f"{display} ({self.get_role_display()})"

@@ -10,7 +10,7 @@ class AuthAPITests(APITestCase):
 	def test_can_register_user_and_receive_tokens(self) -> None:
 		url = reverse("auth-register")
 		payload = {
-			"username": "sweetlover",
+			"name": "sweetlover",
 			"email": "sweetlover@example.com",
 			"password": "sekretpass123",
 		}
@@ -21,7 +21,8 @@ class AuthAPITests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertIn("user", response.data)
 		self.assertEqual(response.data["user"]["email"], payload["email"])
-		self.assertEqual(response.data["user"]["username"], payload["username"])
+		self.assertEqual(response.data["user"]["name"], payload["name"])
+		self.assertTrue(response.data["user"]["username"])  # auto-generated
 		self.assertIn("tokens", response.data)
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
@@ -33,6 +34,7 @@ class AuthAPITests(APITestCase):
 			email="admin@example.com",
 			password="strongpass123",
 			role="admin",
+			name="Site Admin",
 		)
 
 		url = reverse("auth-login")
@@ -52,6 +54,7 @@ class AuthAPITests(APITestCase):
 			email="boss@example.com",
 			password="supersecret",
 			role="admin",
+			name="Sugar Boss",
 		)
 
 		url = reverse("auth-login")
@@ -63,13 +66,14 @@ class AuthAPITests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertEqual(response.data["user"]["role"], "admin")
+		self.assertEqual(response.data["user"]["name"], admin_user.name)
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
 
-	def test_can_register_with_email_and_username(self) -> None:
+	def test_can_register_with_name_and_email(self) -> None:
 		url = reverse("auth-register")
 		payload = {
-			"username": "emailfan",
+			"name": "Email Fan",
 			"email": "emailfan@example.com",
 			"password": "emailsrock123",
 		}
@@ -78,8 +82,10 @@ class AuthAPITests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(response.data["user"]["email"], payload["email"])
+		self.assertEqual(response.data["user"]["name"], payload["name"])
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
+		self.assertTrue(response.data["user"]["username"])
 
 	def test_can_login_and_check_role_for_customer(self) -> None:
 		user_model = get_user_model()
@@ -87,6 +93,7 @@ class AuthAPITests(APITestCase):
 			username="choco-chief",
 			email="choco@example.com",
 			password="emailpass321",
+			name="Choco Chief",
 		)
 
 		url = reverse("auth-login")
@@ -97,6 +104,7 @@ class AuthAPITests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertEqual(response.data["user"]["email"], "choco@example.com")
+		self.assertEqual(response.data["user"]["name"], "Choco Chief")
 		self.assertIn("access", response.data["tokens"])
 		self.assertIn("refresh", response.data["tokens"])
 		self.assertEqual(response.data["user"]["role"], "customer")

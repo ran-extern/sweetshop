@@ -45,12 +45,53 @@ python manage.py test
 
 ## Authentication
 
-The `accounts` app exposes registration/login endpoints under `/api/` and uses SimpleJWT access tokens. Include `Authorization: Bearer <token>` for any sweets endpoints.
+The `accounts` app exposes registration and login endpoints under `/api/` and uses SimpleJWT to issue JWT access and refresh tokens. Below are the concrete API contracts and examples the frontend will use.
 
-Roles:
+Endpoints
 
-- `admin` – full CRUD + restock permissions.
+- POST /api/auth/register/
+	- Request JSON: `{ "name": "Jane Doe", "email": "jdoe@example.com", "password": "strongpass" }`
+	- Response (201):
+		```json
+		{
+			"user": {
+				"id": 1,
+				"username": "jane-doe",   // auto-generated slug (read-only)
+				"name": "Jane Doe",
+				"email": "jdoe@example.com",
+				"role": "customer"
+			},
+			"tokens": { "refresh": "<refresh>", "access": "<access>" }
+		}
+		```
+
+- POST /api/auth/login/
+	- Request JSON: `{ "email": "jdoe@example.com", "password": "strongpass" }`
+	- Response (200): same shape as register (user + tokens, including the `name` field)
+
+- POST /api/auth/token/refresh/
+	- Request JSON: `{ "refresh": "<refresh_token>" }`
+	- Response (200): `{ "access": "<new_access_token>" }`
+
+How to use tokens
+
+- Send the access token in the `Authorization` header on all protected API calls:
+	`Authorization: Bearer <access_token>`
+- Access tokens are short-lived (60 minutes). Use the refresh token to obtain new access tokens via `/api/auth/token/refresh/` or re-login when the refresh token expires.
+
+Security notes and storage recommendations
+
+- Preferred: store the refresh token in an httpOnly secure cookie and keep the access token in memory (safer against XSS). This requires backend support to set/read cookies.
+- Simpler: store both tokens in `localStorage` during development, but be aware of XSS risks in production.
+
+Roles
+
+- `admin` – full CRUD + restock permissions (backend enforces this via `User.role` and `IsAdminUserRole`).
 - `customer` – list, retrieve, search, and purchase sweets.
+
+Browsable API (DRF)
+
+If you prefer to use DRF's browsable API in the browser, log in via the session login page (link appears on the browsable API) or enable Django's admin/login views so the browsable site carries a session cookie instead of a JWT header.
 
 ## Sweets API Reference
 

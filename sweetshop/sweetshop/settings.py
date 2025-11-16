@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django_filters',
     'accounts',
     'sweets',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'sweetshop.urls'
@@ -155,3 +157,10 @@ AUTHENTICATION_BACKENDS = [
     "accounts.auth_backends.EmailBackend",
     "django.contrib.auth.backends.ModelBackend",  # keep default as fallback
 ]
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",    # change this to your frontend URL
+]
+
+CORS_ALLOWED_CREDENTIALS = True
