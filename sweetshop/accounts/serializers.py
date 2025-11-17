@@ -27,12 +27,31 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("name", "email", "password")
+        # Include `username` in the fields because it is declared above as
+        # an optional write-only field. Omitting it causes DRF to raise
+        # an AssertionError during serializer field collection.
+        fields = ("username", "name", "email", "password")
 
     def create(self, validated_data):
+        # Pull out the provided name and optional username from validated data.
+        # If a client supplied a username, validate/slugify and ensure it's
+        # not already taken; otherwise generate a safe unique username.
+        from django.utils.text import slugify
+
         name = validated_data.pop("name")
+        provided_username = validated_data.pop("username", None)
         email = validated_data["email"].lower()
-        username = self._generate_username(name=name, email=email)
+
+        if provided_username:
+            candidate = slugify(provided_username) or provided_username
+            candidate = candidate[:150]
+            if User.objects.filter(username=candidate).exists():
+                raise serializers.ValidationError(
+                    {"username": _("This username is already taken.")}
+                )
+            username = candidate
+        else:
+            username = self._generate_username(name=name, email=email)
 
         user_data = {
             **validated_data,
@@ -41,6 +60,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "email": email,
             "role": User.Role.CUSTOMER,
         }
+
         return User.objects.create_user(**user_data)
 
     def _generate_username(self, *, name: str, email: str) -> str:
